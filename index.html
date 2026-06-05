@@ -32,7 +32,8 @@
         <h2>참가자 평가 (<span id="participant-num">1</span>번)</h2>
         <p>심사위원: <span id="judge-display-name"></span></p>
         <div id="participant-info" class="form-group">
-            <p><strong>분류:</strong> <span id="p-info">개인 / 오리엔탈 / 성인1 / 프로</span></p>
+            <p><strong>이름:</strong> <span id="p-name">불러오는 중...</span></p>
+            <p><strong>분류:</strong> <span id="p-info">불러오는 중...</span></p>
         </div>
 
         <form id="score-form">
@@ -54,7 +55,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAoy2h2gxIZRx9EY02SpiBicPM4FnWaqrI",
@@ -69,9 +70,26 @@
         const db = getFirestore(app);
 
         let currentParticipantNum = 1;
-        let currentJudgeId = ""; 
+        let currentJudgeId = "";
 
-        // 로그인 처리 이벤트
+        // 참가자 정보 불러오기 함수
+        async function loadParticipantInfo(num) {
+            try {
+                const docRef = doc(db, "participants", String(num));
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    document.getElementById('p-name').innerText = data.name || "이름 없음";
+                    document.getElementById('p-info').innerText = data.info || "분류 없음";
+                } else {
+                    document.getElementById('p-name').innerText = "정보 없음";
+                    document.getElementById('p-info').innerText = "정보 없음";
+                }
+            } catch (error) {
+                console.error("참가자 정보 로드 오류:", error);
+            }
+        }
+
         document.getElementById('login-btn').addEventListener('click', async () => {
             const name = document.getElementById('judgeName').value;
             const pin = document.getElementById('judgePin').value;
@@ -82,7 +100,6 @@
             }
 
             try {
-                // Firestore의 judges 컬렉션에서 이름과 PIN이 일치하는 문서 검색
                 const q = query(collection(db, "judges"), where("name", "==", name), where("pin", "==", pin));
                 const querySnapshot = await getDocs(q);
 
@@ -92,9 +109,11 @@
                         document.getElementById('judge-display-name').innerText = doc.data().name;
                     });
 
-                    // 화면 전환
                     document.getElementById('login-container').style.display = 'none';
                     document.getElementById('evaluation-container').style.display = 'block';
+                    
+                    // 로그인 성공 시 1번 참가자 정보 로드
+                    await loadParticipantInfo(currentParticipantNum);
                 } else {
                     alert("등록된 심사위원 정보와 일치하지 않습니다.");
                 }
@@ -104,7 +123,6 @@
             }
         });
 
-        // 점수 제출 이벤트
         document.getElementById('score-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -127,6 +145,9 @@
                 currentParticipantNum++;
                 document.getElementById('participant-num').innerText = currentParticipantNum;
                 document.getElementById('score-form').reset();
+                
+                // 다음 참가자 정보 로드
+                await loadParticipantInfo(currentParticipantNum);
 
             } catch (error) {
                 console.error("데이터 저장 오류:", error);
