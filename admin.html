@@ -8,34 +8,42 @@
         table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
         th, td { border: 1px solid #ddd; padding: 10px; }
         th { background-color: #f4f4f4; }
-        button { padding: 10px 15px; background-color: #28a745; color: white; border: none; cursor: pointer; font-size: 14px; margin-bottom: 10px; }
-        button:hover { background-color: #218838; }
+        .btn-group { margin-bottom: 15px; }
+        button { padding: 10px 15px; color: white; border: none; cursor: pointer; font-size: 14px; margin-right: 5px; }
+        #refresh-btn { background-color: #28a745; }
+        #refresh-btn:hover { background-color: #218838; }
+        #excel-btn { background-color: #17a2b8; }
+        #excel-btn:hover { background-color: #138496; }
     </style>
 </head>
 <body>
 
     <h2>참가자 순위 및 점수 현황</h2>
-    <button id="refresh-btn">데이터 새로고침</button>
+    <div class="btn-group">
+        <button id="refresh-btn">데이터 새로고침</button>
+        <button id="excel-btn">엑셀(CSV) 다운로드</button>
+    </div>
 
-    <table>
+    <table id="result-table">
         <thead>
             <tr>
                 <th>순위</th>
                 <th>참가자 번호</th>
+                <th>참가자 이름</th>
                 <th>심사위원 수</th>
                 <th>최종 합산 점수</th>
             </tr>
         </thead>
         <tbody id="result-body">
             <tr>
-                <td colspan="4">데이터를 불러오는 중입니다...</td>
+                <td colspan="5">데이터를 불러오는 중입니다...</td>
             </tr>
         </tbody>
     </table>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAoy2h2gxIZRx9EY02SpiBicPM4FnWaqrI",
@@ -51,7 +59,7 @@
 
         async function loadScores() {
             const tbody = document.getElementById('result-body');
-            tbody.innerHTML = '<tr><td colspan="4">데이터를 불러오는 중입니다...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5">데이터를 불러오는 중입니다...</td></tr>';
 
             try {
                 const querySnapshot = await getDocs(collection(db, "scores"));
@@ -83,8 +91,19 @@
 
                     finalScore = scores.reduce((sum, val) => sum + val, 0);
 
+                    let pName = "이름 없음";
+                    try {
+                        const pDoc = await getDoc(doc(db, "participants", pId));
+                        if (pDoc.exists()) {
+                            pName = pDoc.data().name || "이름 없음";
+                        }
+                    } catch(e) {
+                        console.error("이름 로드 실패", e);
+                    }
+
                     ranking.push({
                         pId: pId,
+                        pName: pName,
                         judgeCount: judgeCount,
                         finalScore: finalScore
                     });
@@ -95,7 +114,7 @@
                 tbody.innerHTML = '';
                 
                 if (ranking.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4">제출된 평가 데이터가 없습니다.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="5">제출된 평가 데이터가 없습니다.</td></tr>';
                     return;
                 }
 
@@ -104,6 +123,7 @@
                     tr.innerHTML = `
                         <td>${index + 1}</td>
                         <td>${data.pId}번</td>
+                        <td>${data.pName}</td>
                         <td>${data.judgeCount}명</td>
                         <td>${data.finalScore}점</td>
                     `;
@@ -112,11 +132,32 @@
 
             } catch (error) {
                 console.error("데이터 불러오기 오류:", error);
-                tbody.innerHTML = '<tr><td colspan="4">데이터를 불러오는 데 실패했습니다.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5">데이터를 불러오는 데 실패했습니다.</td></tr>';
             }
         }
 
+        function downloadCSV() {
+            const table = document.getElementById("result-table");
+            let csv = [];
+            for (let i = 0; i < table.rows.length; i++) {
+                let row = [], cols = table.rows[i].querySelectorAll("td, th");
+                for (let j = 0; j < cols.length; j++) {
+                    row.push(cols[j].innerText);
+                }
+                csv.push(row.join(","));
+            }
+            const csvFile = new Blob(["\uFEFF" + csv.join("\n")], {type: "text/csv;charset=utf-8;"});
+            const downloadLink = document.createElement("a");
+            downloadLink.download = "순위결과.csv";
+            downloadLink.href = window.URL.createObjectURL(csvFile);
+            downloadLink.style.display = "none";
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        }
+
         document.getElementById('refresh-btn').addEventListener('click', loadScores);
+        document.getElementById('excel-btn').addEventListener('click', downloadCSV);
 
         loadScores();
     </script>
