@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>심사 평가 시스템</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: 0 auto; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="number"] { width: 100%; padding: 8px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+
+    <h2>참가자 평가 (<span id="participant-num">1</span>번)</h2>
+    <div id="participant-info" class="form-group">
+        <p><strong>분류:</strong> <span id="p-info">개인 / 오리엔탈 / 성인1 / 프로</span></p>
+    </div>
+
+    <form id="score-form">
+        <div class="form-group">
+            <label for="techScore">기술성 (1~10점)</label>
+            <input type="number" id="techScore" min="1" max="10" required>
+        </div>
+        <div class="form-group">
+            <label for="expScore">표현력 (1~10점)</label>
+            <input type="number" id="expScore" min="1" max="10" required>
+        </div>
+        <div class="form-group">
+            <label for="artScore">작품성 (1~10점)</label>
+            <input type="number" id="artScore" min="1" max="10" required>
+        </div>
+        <button type="submit">점수 제출 및 다음 참가자 이동</button>
+    </form>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+        // 현재 화면에 표시된 실제 Firebase 설정 값입니다.
+        const firebaseConfig = {
+            apiKey: "AIzaSyAoy2h2gxIZRx9EY02SpiBicPM4FnWaqrI",
+            authDomain: "evaluation-sheet-353cc.firebaseapp.com",
+            projectId: "evaluation-sheet-353cc",
+            storageBucket: "evaluation-sheet-353cc.firebasestorage.app",
+            messagingSenderId: "292646528829",
+            appId: "1:292646528829:web:4503667a830e199126c754"
+        };
+
+        // Firebase 초기화
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // 현재 평가 중인 참가자 번호 및 임시 로그인된 심사위원 ID
+        let currentParticipantNum = 1;
+        const currentJudgeId = "TEST_JUDGE_ID"; 
+
+        // 점수 제출 이벤트
+        document.getElementById('score-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const techScore = parseInt(document.getElementById('techScore').value);
+            const expScore = parseInt(document.getElementById('expScore').value);
+            const artScore = parseInt(document.getElementById('artScore').value);
+
+            try {
+                // Firestore의 scores 컬렉션에 점수 데이터 저장
+                await addDoc(collection(db, "scores"), {
+                    judgeId: currentJudgeId,
+                    participantId: String(currentParticipantNum),
+                    techScore: techScore,
+                    expScore: expScore,
+                    artScore: artScore,
+                    timestamp: new Date()
+                });
+
+                alert(`${currentParticipantNum}번 참가자 평가가 제출되었습니다.`);
+                
+                // 다음 참가자로 번호 증가 및 화면 갱신
+                currentParticipantNum++;
+                document.getElementById('participant-num').innerText = currentParticipantNum;
+                
+                // 입력 폼 초기화
+                document.getElementById('score-form').reset();
+
+            } catch (error) {
+                console.error("데이터 저장 오류:", error);
+                alert("점수 저장에 실패했습니다.");
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>심사 관리자 페이지</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
+        th, td { border: 1px solid #ddd; padding: 10px; }
+        th { background-color: #f4f4f4; }
+        button { padding: 10px 15px; background-color: #28a745; color: white; border: none; cursor: pointer; font-size: 14px; margin-bottom: 10px; }
+        button:hover { background-color: #218838; }
+    </style>
+</head>
+<body>
+
+    <h2>참가자 순위 및 점수 현황</h2>
+    <button id="refresh-btn">데이터 새로고침</button>
+
+    <table>
+        <thead>
+            <tr>
+                <th>순위</th>
+                <th>참가자 번호</th>
+                <th>심사위원 수</th>
+                <th>최종 합산 점수</th>
+            </tr>
+        </thead>
+        <tbody id="result-body">
+            <tr>
+                <td colspan="4">데이터를 불러오는 중입니다...</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAoy2h2gxIZRx9EY02SpiBicPM4FnWaqrI",
+            authDomain: "evaluation-sheet-353cc.firebaseapp.com",
+            projectId: "evaluation-sheet-353cc",
+            storageBucket: "evaluation-sheet-353cc.firebasestorage.app",
+            messagingSenderId: "292646528829",
+            appId: "1:292646528829:web:4503667a830e199126c754"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        async function loadScores() {
+            const tbody = document.getElementById('result-body');
+            tbody.innerHTML = '<tr><td colspan="4">데이터를 불러오는 중입니다...</td></tr>';
+
+            try {
+                const querySnapshot = await getDocs(collection(db, "scores"));
+                const participantData = {};
+
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const pId = data.participantId;
+                    const totalScore = data.techScore + data.expScore + data.artScore;
+
+                    if (!participantData[pId]) {
+                        participantData[pId] = [];
+                    }
+                    participantData[pId].push(totalScore);
+                });
+
+                const ranking = [];
+
+                for (const pId in participantData) {
+                    let scores = participantData[pId];
+                    const judgeCount = scores.length;
+                    let finalScore = 0;
+
+                    if (judgeCount >= 3) {
+                        scores.sort((a, b) => a - b);
+                        scores.shift(); 
+                        scores.pop();   
+                    }
+
+                    finalScore = scores.reduce((sum, val) => sum + val, 0);
+
+                    ranking.push({
+                        pId: pId,
+                        judgeCount: judgeCount,
+                        finalScore: finalScore
+                    });
+                }
+
+                ranking.sort((a, b) => b.finalScore - a.finalScore);
+
+                tbody.innerHTML = '';
+                
+                if (ranking.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4">제출된 평가 데이터가 없습니다.</td></tr>';
+                    return;
+                }
+
+                ranking.forEach((data, index) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${data.pId}번</td>
+                        <td>${data.judgeCount}명</td>
+                        <td>${data.finalScore}점</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+            } catch (error) {
+                console.error("데이터 불러오기 오류:", error);
+                tbody.innerHTML = '<tr><td colspan="4">데이터를 불러오는 데 실패했습니다.</td></tr>';
+            }
+        }
+
+        document.getElementById('refresh-btn').addEventListener('click', loadScores);
+
+        loadScores();
+    </script>
+</body>
+</html>
