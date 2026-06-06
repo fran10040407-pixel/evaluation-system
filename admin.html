@@ -33,7 +33,7 @@
     <div class="btn-group">
         <input type="file" id="csv-file" accept=".csv">
         <button id="upload-csv-btn">CSV 일괄 업로드</button>
-        <p style="font-size: 12px; color: #666; margin-top: 5px;">※ CSV 파일 작성법: 엑셀에서 A열(번호), B열(이름), C열(분류) 순서로 작성 후 'CSV(쉼표로 분리)' 형식으로 저장</p>
+        <p style="font-size: 12px; color: #666; margin-top: 5px;">※ CSV 파일 작성법: 엑셀에서 A열(번호), B열(이름), C열(분류) 순서로 작성 후 'CSV UTF-8 (쉼표로 분리)' 형식으로 저장</p>
     </div>
 
     <h3 class="section-title">📊 심사위원별 평가 진행 현황</h3>
@@ -94,7 +94,6 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // CSV 업로드 기능
         document.getElementById('upload-csv-btn').addEventListener('click', () => {
             const fileInput = document.getElementById('csv-file');
             const file = fileInput.files[0];
@@ -255,7 +254,17 @@
                     return;
                 }
 
+                // 순위에 따른 메달 색상 표기 처리
                 ranking.forEach((data, index) => {
+                    let prizeInfo = '';
+                    if (index === 0) {
+                        prizeInfo = ' <span style="color: #FFD700; font-weight: bold;">(금상)</span>';
+                    } else if (index === 1) {
+                        prizeInfo = ' <span style="color: #C0C0C0; font-weight: bold;">(은상)</span>';
+                    } else if (index === 2) {
+                        prizeInfo = ' <span style="color: #CD7F32; font-weight: bold;">(동상)</span>';
+                    }
+
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td>${index + 1}</td>
@@ -263,7 +272,7 @@
                         <td>${data.pName}</td>
                         <td>${data.pInfo}</td>
                         <td>${data.judgeCount}명</td>
-                        <td>${data.finalScore}점</td>
+                        <td>${data.finalScore}점${prizeInfo}</td>
                     `;
                     resultBody.appendChild(tr);
                 });
@@ -280,7 +289,7 @@
             for (let i = 0; i < table.rows.length; i++) {
                 let row = [], cols = table.rows[i].querySelectorAll("td, th");
                 for (let j = 0; j < cols.length; j++) {
-                    row.push(cols[j].innerText);
+                    row.push(cols[j].innerText.replace(/(\r\n|\n|\r)/gm, " "));
                 }
                 csv.push(row.join(","));
             }
