@@ -8,8 +8,15 @@
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
         input[type="text"], input[type="password"], input[type="number"] { width: 100%; padding: 8px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background-color: #007bff; color: white; border: none; cursor: pointer; font-size: 16px; }
-        button:hover { background-color: #0056b3; }
+        button { width: 100%; padding: 10px; color: white; border: none; cursor: pointer; font-size: 16px; margin-bottom: 10px; }
+        .btn-primary { background-color: #007bff; }
+        .btn-primary:hover { background-color: #0056b3; }
+        .btn-row { display: flex; gap: 10px; margin-bottom: 10px; }
+        .btn-row button { margin-bottom: 0; }
+        .btn-secondary { background-color: #6c757d; }
+        .btn-secondary:hover { background-color: #5a6268; }
+        .btn-danger { background-color: #dc3545; }
+        .btn-danger:hover { background-color: #c82333; }
         #evaluation-container { display: none; }
     </style>
 </head>
@@ -25,7 +32,7 @@
             <label for="judgePin">PIN 번호 (비밀번호)</label>
             <input type="password" id="judgePin" required>
         </div>
-        <button id="login-btn">로그인</button>
+        <button id="login-btn" class="btn-primary">로그인</button>
     </div>
 
     <div id="evaluation-container">
@@ -49,13 +56,19 @@
                 <label for="artScore">작품성 (1~10점)</label>
                 <input type="number" id="artScore" min="1" max="10" required>
             </div>
-            <button type="submit">점수 제출 및 다음 참가자 이동</button>
+            
+            <button type="submit" class="btn-primary">점수 제출 및 다음 참가자 이동</button>
+            
+            <div class="btn-row">
+                <button type="button" id="prev-btn" class="btn-secondary">이전 참가자로 돌아가기</button>
+                <button type="button" id="absent-btn" class="btn-danger">결시 처리 (다음으로)</button>
+            </div>
         </form>
     </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, query, where, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+        import { getFirestore, collection, query, where, getDocs, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAoy2h2gxIZRx9EY02SpiBicPM4FnWaqrI",
@@ -72,7 +85,6 @@
         let currentParticipantNum = 1;
         let currentJudgeId = "";
 
-        // 참가자 정보 불러오기 함수
         async function loadParticipantInfo(num) {
             try {
                 const docRef = doc(db, "participants", String(num));
@@ -88,6 +100,13 @@
             } catch (error) {
                 console.error("참가자 정보 로드 오류:", error);
             }
+        }
+
+        async function moveToNext() {
+            currentParticipantNum++;
+            document.getElementById('participant-num').innerText = currentParticipantNum;
+            document.getElementById('score-form').reset();
+            await loadParticipantInfo(currentParticipantNum);
         }
 
         document.getElementById('login-btn').addEventListener('click', async () => {
@@ -112,17 +131,49 @@
                     document.getElementById('login-container').style.display = 'none';
                     document.getElementById('evaluation-container').style.display = 'block';
                     
-                    // 로그인 성공 시 1번 참가자 정보 로드
                     await loadParticipantInfo(currentParticipantNum);
                 } else {
                     alert("등록된 심사위원 정보와 일치하지 않습니다.");
                 }
             } catch (error) {
-                console.error("로그인 오류:", error);
                 alert("로그인 처리 중 오류가 발생했습니다.");
             }
         });
 
+        // 이전 참가자 버튼
+        document.getElementById('prev-btn').addEventListener('click', async () => {
+            if (currentParticipantNum > 1) {
+                currentParticipantNum--;
+                document.getElementById('participant-num').innerText = currentParticipantNum;
+                document.getElementById('score-form').reset();
+                await loadParticipantInfo(currentParticipantNum);
+            } else {
+                alert("첫 번째 참가자입니다.");
+            }
+        });
+
+        // 결시 처리 버튼
+        document.getElementById('absent-btn').addEventListener('click', async () => {
+            if (confirm(`${currentParticipantNum}번 참가자를 결시 처리하시겠습니까?`)) {
+                try {
+                    const scoreDocId = `${currentJudgeId}_${currentParticipantNum}`;
+                    await setDoc(doc(db, "scores", scoreDocId), {
+                        judgeId: currentJudgeId,
+                        participantId: String(currentParticipantNum),
+                        techScore: 0,
+                        expScore: 0,
+                        artScore: 0,
+                        isAbsent: true,
+                        timestamp: new Date()
+                    });
+                    await moveToNext();
+                } catch (error) {
+                    alert("결시 처리에 실패했습니다.");
+                }
+            }
+        });
+
+        // 점수 제출
         document.getElementById('score-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -131,26 +182,22 @@
             const artScore = parseInt(document.getElementById('artScore').value);
 
             try {
-                await addDoc(collection(db, "scores"), {
+                // setDoc을 사용하여 기존 점수가 있다면 덮어쓰기
+                const scoreDocId = `${currentJudgeId}_${currentParticipantNum}`;
+                await setDoc(doc(db, "scores", scoreDocId), {
                     judgeId: currentJudgeId,
                     participantId: String(currentParticipantNum),
                     techScore: techScore,
                     expScore: expScore,
                     artScore: artScore,
+                    isAbsent: false,
                     timestamp: new Date()
                 });
 
                 alert(`${currentParticipantNum}번 참가자 평가가 제출되었습니다.`);
-                
-                currentParticipantNum++;
-                document.getElementById('participant-num').innerText = currentParticipantNum;
-                document.getElementById('score-form').reset();
-                
-                // 다음 참가자 정보 로드
-                await loadParticipantInfo(currentParticipantNum);
+                await moveToNext();
 
             } catch (error) {
-                console.error("데이터 저장 오류:", error);
                 alert("점수 저장에 실패했습니다.");
             }
         });
