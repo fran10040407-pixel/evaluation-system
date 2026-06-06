@@ -18,6 +18,7 @@
         #upload-csv-btn { background-color: #ffc107; color: black; }
         #upload-csv-btn:hover { background-color: #e0a800; }
         .section-title { border-left: 4px solid #007bff; padding-left: 10px; margin-top: 30px; }
+        .group-header td { background-color: #e9ecef; font-weight: bold; text-align: left; padding-left: 15px; font-size: 16px; color: #333; }
     </style>
 </head>
 <body>
@@ -52,11 +53,11 @@
         </tbody>
     </table>
 
-    <h3 class="section-title">🏆 참가자 순위 및 최종 합산 점수</h3>
+    <h3 class="section-title">🏆 부문별 참가자 순위 및 최종 결과</h3>
     <table id="result-table">
         <thead>
             <tr>
-                <th>순위</th>
+                <th>부문 내 순위</th>
                 <th>참가자 번호</th>
                 <th>참가자 이름</th>
                 <th>분류(부문)</th>
@@ -94,6 +95,7 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
+        // CSV 업로드
         document.getElementById('upload-csv-btn').addEventListener('click', () => {
             const fileInput = document.getElementById('csv-file');
             const file = fileInput.files[0];
@@ -144,12 +146,14 @@
             resultBody.innerHTML = '<tr><td colspan="6">데이터를 불러오는 중입니다...</td></tr>';
 
             try {
+                // 심사위원 현황
                 const judgesSnap = await getDocs(collection(db, "judges"));
                 const judgeInfo = {};
                 judgesSnap.forEach(doc => {
                     judgeInfo[doc.id] = { name: doc.data().name, count: 0, latestPId: 0 };
                 });
 
+                // 점수 합산
                 const querySnapshot = await getDocs(collection(db, "scores"));
                 const participantData = {};
 
@@ -191,12 +195,12 @@
                         </tr>
                     `;
                 }
-                if (statusHtml === '') {
-                    statusHtml = '<tr><td colspan="3">등록된 심사위원이 없습니다.</td></tr>';
-                }
+                if (statusHtml === '') statusHtml = '<tr><td colspan="3">등록된 심사위원이 없습니다.</td></tr>';
                 statusBody.innerHTML = statusHtml;
 
-                let ranking = [];
+                // 참가자 정보를 부문(info)별로 그룹화
+                const groupedRanking = {};
+
                 for (const pId in participantData) {
                     let scores = participantData[pId];
                     const judgeCount = scores.length;
@@ -207,10 +211,7 @@
                         scores.pop();   
                     }
 
-                    let finalScore = 0;
-                    let finalTech = 0;
-                    let finalExp = 0;
-
+                    let finalScore = 0, finalTech = 0, finalExp = 0;
                     scores.forEach(s => {
                         finalScore += s.total;
                         finalTech += s.tech;
@@ -218,19 +219,22 @@
                     });
 
                     let pName = "이름 없음";
-                    let pInfo = "분류 없음";
+                    let pInfo = "미분류";
                     try {
                         const pDoc = await getDoc(doc(db, "participants", pId));
                         if (pDoc.exists()) {
                             pName = pDoc.data().name || "이름 없음";
-                            pInfo = pDoc.data().info || "분류 없음";
+                            pInfo = pDoc.data().info || "미분류";
                         }
                     } catch(e) {
                         console.error("이름 로드 실패", e);
                     }
 
                     if (filterKeyword === "" || pInfo.includes(filterKeyword)) {
-                        ranking.push({
+                        if (!groupedRanking[pInfo]) {
+                            groupedRanking[pInfo] = [];
+                        }
+                        groupedRanking[pInfo].push({
                             pId: pId,
                             pName: pName,
                             pInfo: pInfo,
@@ -242,39 +246,53 @@
                     }
                 }
 
-                ranking.sort((a, b) => {
-                    if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
-                    if (b.finalTech !== a.finalTech) return b.finalTech - a.finalTech;
-                    return b.finalExp - a.finalExp;
-                });
-
                 resultBody.innerHTML = '';
-                if (ranking.length === 0) {
+                const groupKeys = Object.keys(groupedRanking).sort();
+
+                if (groupKeys.length === 0) {
                     resultBody.innerHTML = '<tr><td colspan="6">조건에 맞는 데이터가 없습니다.</td></tr>';
                     return;
                 }
 
-                // 순위에 따른 메달 색상 표기 처리
-                ranking.forEach((data, index) => {
-                    let prizeInfo = '';
-                    if (index === 0) {
-                        prizeInfo = ' <span style="color: #FFD700; font-weight: bold;">(금상)</span>';
-                    } else if (index === 1) {
-                        prizeInfo = ' <span style="color: #C0C0C0; font-weight: bold;">(은상)</span>';
-                    } else if (index === 2) {
-                        prizeInfo = ' <span style="color: #CD7F32; font-weight: bold;">(동상)</span>';
-                    }
+                // 각 부문별로 순위 매기기 및 출력
+                groupKeys.forEach(groupName => {
+                    const groupData = groupedRanking[groupName];
 
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${index + 1}</td>
-                        <td>${data.pId}번</td>
-                        <td>${data.pName}</td>
-                        <td>${data.pInfo}</td>
-                        <td>${data.judgeCount}명</td>
-                        <td>${data.finalScore}점${prizeInfo}</td>
-                    `;
-                    resultBody.appendChild(tr);
+                    // 부문 내 점수 정렬 (총점 -> 기술성 -> 표현력)
+                    groupData.sort((a, b) => {
+                        if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
+                        if (b.finalTech !== a.finalTech) return b.finalTech - a.finalTech;
+                        return b.finalExp - a.finalExp;
+                    });
+
+                    // 부문 헤더 생성
+                    const headerTr = document.createElement('tr');
+                    headerTr.className = 'group-header';
+                    headerTr.innerHTML = `<td colspan="6">🏆 [ ${groupName} ] 부문 결과</td>`;
+                    resultBody.appendChild(headerTr);
+
+                    // 참가자 데이터 출력
+                    groupData.forEach((data, index) => {
+                        let prizeInfo = '';
+                        if (index === 0) {
+                            prizeInfo = ' <span style="color: #FFD700; font-weight: bold;">(금상)</span>';
+                        } else if (index === 1) {
+                            prizeInfo = ' <span style="color: #A9A9A9; font-weight: bold;">(은상)</span>';
+                        } else if (index === 2) {
+                            prizeInfo = ' <span style="color: #CD7F32; font-weight: bold;">(동상)</span>';
+                        }
+
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${index + 1}</td>
+                            <td>${data.pId}번</td>
+                            <td>${data.pName}</td>
+                            <td>${data.pInfo}</td>
+                            <td>${data.judgeCount}명</td>
+                            <td>${data.finalScore}점${prizeInfo}</td>
+                        `;
+                        resultBody.appendChild(tr);
+                    });
                 });
 
             } catch (error) {
@@ -283,19 +301,24 @@
             }
         }
 
+        // CSV 다운로드 시 부문 헤더는 제외하고 깔끔하게 엑셀로 저장
         function downloadCSV() {
             const table = document.getElementById("result-table");
             let csv = [];
             for (let i = 0; i < table.rows.length; i++) {
-                let row = [], cols = table.rows[i].querySelectorAll("td, th");
+                let row = table.rows[i];
+                if (row.classList.contains('group-header')) continue; // 엑셀 변환 시 부문 제목줄은 제외
+                
+                let cols = row.querySelectorAll("td, th");
+                let rowData = [];
                 for (let j = 0; j < cols.length; j++) {
-                    row.push(cols[j].innerText.replace(/(\r\n|\n|\r)/gm, " "));
+                    rowData.push(cols[j].innerText.replace(/(\r\n|\n|\r)/gm, " "));
                 }
-                csv.push(row.join(","));
+                csv.push(rowData.join(","));
             }
             const csvFile = new Blob(["\uFEFF" + csv.join("\n")], {type: "text/csv;charset=utf-8;"});
             const downloadLink = document.createElement("a");
-            downloadLink.download = "순위결과.csv";
+            downloadLink.download = "부문별_순위결과.csv";
             downloadLink.href = window.URL.createObjectURL(csvFile);
             downloadLink.style.display = "none";
             document.body.appendChild(downloadLink);
