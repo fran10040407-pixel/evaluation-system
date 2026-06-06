@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <title>심사 관리자 페이지</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; text-align: center; }
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; text-align: center; margin-bottom: 30px; }
         th, td { border: 1px solid #ddd; padding: 10px; }
         th { background-color: #f4f4f4; }
         .btn-group { margin-bottom: 15px; }
@@ -15,17 +15,35 @@
         #refresh-btn:hover { background-color: #218838; }
         #excel-btn { background-color: #17a2b8; }
         #excel-btn:hover { background-color: #138496; }
+        .section-title { border-left: 4px solid #007bff; padding-left: 10px; margin-top: 30px; }
     </style>
 </head>
 <body>
 
-    <h2>참가자 순위 및 점수 현황</h2>
+    <h2>심사 관리자 종합 대시보드</h2>
     <div class="btn-group">
         <input type="text" id="filter-input" placeholder="부문 검색 (예: 성인1)">
         <button id="refresh-btn">검색 및 새로고침</button>
         <button id="excel-btn">엑셀(CSV) 다운로드</button>
     </div>
 
+    <h3 class="section-title">📊 심사위원별 평가 진행 현황</h3>
+    <table id="status-table">
+        <thead>
+            <tr>
+                <th>심사위원 이름</th>
+                <th>평가 완료 건수</th>
+                <th>최근 평가한 참가자 번호</th>
+            </tr>
+        </thead>
+        <tbody id="status-body">
+            <tr>
+                <td colspan="3">데이터를 불러오는 중입니다...</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3 class="section-title">🏆 참가자 순위 및 최종 합산 점수</h3>
     <table id="result-table">
         <thead>
             <tr>
@@ -60,28 +78,70 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        async function loadScores() {
-            const tbody = document.getElementById('result-body');
+        async function loadDashboard() {
+            const statusBody = document.getElementById('status-body');
+            const resultBody = document.getElementById('result-body');
             const filterKeyword = document.getElementById('filter-input').value.trim();
-            tbody.innerHTML = '<tr><td colspan="6">데이터를 불러오는 중입니다...</td></tr>';
+            
+            statusBody.innerHTML = '<tr><td colspan="3">데이터를 불러오는 중입니다...</td></tr>';
+            resultBody.innerHTML = '<tr><td colspan="6">데이터를 불러오는 중입니다...</td></tr>';
 
             try {
+                // 1. 심사위원 목록 가져오기
+                const judgesSnap = await getDocs(collection(db, "judges"));
+                const judgeInfo = {};
+                judgesSnap.forEach(doc => {
+                    judgeInfo[doc.id] = { name: doc.data().name, count: 0, latestPId: 0 };
+                });
+
+                // 2. 점수 데이터 가져오기
                 const querySnapshot = await getDocs(collection(db, "scores"));
                 const participantData = {};
 
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
+                    const jId = data.judgeId;
                     const pId = data.participantId;
-                    const totalScore = data.techScore + data.expScore + data.artScore;
-
-                    if (!participantData[pId]) {
-                        participantData[pId] = [];
+                    
+                    // 심사위원별 진행 현황 계산
+                    if (judgeInfo[jId]) {
+                        judgeInfo[jId].count++;
+                        if (parseInt(pId) > judgeInfo[jId].latestPId) {
+                            judgeInfo[jId].latestPId = parseInt(pId);
+                        }
                     }
-                    participantData[pId].push(totalScore);
+
+                    // 순위 합산 계산 (결시자 데이터는 제외)
+                    if (!data.isAbsent) {
+                        const totalScore = data.techScore + data.expScore + data.artScore;
+                        if (!participantData[pId]) {
+                            participantData[pId] = [];
+                        }
+                        participantData[pId].push(totalScore);
+                    }
                 });
 
-                let ranking = [];
+                // 3. 심사위원 현황 테이블 화면에 출력
+                statusBody.innerHTML = '';
+                let statusHtml = '';
+                for (const jId in judgeInfo) {
+                    const info = judgeInfo[jId];
+                    const latestText = info.latestPId > 0 ? `${info.latestPId}번` : '진행 전';
+                    statusHtml += `
+                        <tr>
+                            <td>${info.name}</td>
+                            <td>${info.count}명 완료</td>
+                            <td>${latestText}</td>
+                        </tr>
+                    `;
+                }
+                if (statusHtml === '') {
+                    statusHtml = '<tr><td colspan="3">등록된 심사위원이 없습니다.</td></tr>';
+                }
+                statusBody.innerHTML = statusHtml;
 
+                // 4. 순위 테이블 화면에 출력
+                let ranking = [];
                 for (const pId in participantData) {
                     let scores = participantData[pId];
                     const judgeCount = scores.length;
@@ -120,10 +180,9 @@
 
                 ranking.sort((a, b) => b.finalScore - a.finalScore);
 
-                tbody.innerHTML = '';
-                
+                resultBody.innerHTML = '';
                 if (ranking.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6">조건에 맞는 데이터가 없습니다.</td></tr>';
+                    resultBody.innerHTML = '<tr><td colspan="6">조건에 맞는 데이터가 없습니다.</td></tr>';
                     return;
                 }
 
@@ -137,12 +196,12 @@
                         <td>${data.judgeCount}명</td>
                         <td>${data.finalScore}점</td>
                     `;
-                    tbody.appendChild(tr);
+                    resultBody.appendChild(tr);
                 });
 
             } catch (error) {
                 console.error("데이터 불러오기 오류:", error);
-                tbody.innerHTML = '<tr><td colspan="6">데이터를 불러오는 데 실패했습니다.</td></tr>';
+                resultBody.innerHTML = '<tr><td colspan="6">데이터를 불러오는 데 실패했습니다.</td></tr>';
             }
         }
 
@@ -156,6 +215,7 @@
                 }
                 csv.push(row.join(","));
             }
+            // 엑셀에서 한글이 깨지지 않도록 BOM 추가
             const csvFile = new Blob(["\uFEFF" + csv.join("\n")], {type: "text/csv;charset=utf-8;"});
             const downloadLink = document.createElement("a");
             downloadLink.download = "순위결과.csv";
@@ -166,10 +226,10 @@
             document.body.removeChild(downloadLink);
         }
 
-        document.getElementById('refresh-btn').addEventListener('click', loadScores);
+        document.getElementById('refresh-btn').addEventListener('click', loadDashboard);
         document.getElementById('excel-btn').addEventListener('click', downloadCSV);
 
-        loadScores();
+        loadDashboard();
     </script>
 </body>
 </html>
