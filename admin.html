@@ -63,6 +63,14 @@
     </table>
 
     <script type="module">
+        // 1. 관리자 보안: 비밀번호 확인 (기본 비밀번호: admin1234)
+        const adminPw = prompt("관리자 비밀번호를 입력하세요.");
+        if (adminPw !== "admin1234") {
+            alert("비밀번호가 일치하지 않습니다.");
+            document.body.innerHTML = "<h2 style='text-align:center; margin-top:50px;'>접근이 거부되었습니다.</h2>";
+            throw new Error("Unauthorized");
+        }
+
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
         import { getFirestore, collection, getDocs, doc, getDoc } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
@@ -87,14 +95,12 @@
             resultBody.innerHTML = '<tr><td colspan="6">데이터를 불러오는 중입니다...</td></tr>';
 
             try {
-                // 1. 심사위원 목록 가져오기
                 const judgesSnap = await getDocs(collection(db, "judges"));
                 const judgeInfo = {};
                 judgesSnap.forEach(doc => {
                     judgeInfo[doc.id] = { name: doc.data().name, count: 0, latestPId: 0 };
                 });
 
-                // 2. 점수 데이터 가져오기
                 const querySnapshot = await getDocs(collection(db, "scores"));
                 const participantData = {};
 
@@ -103,7 +109,6 @@
                     const jId = data.judgeId;
                     const pId = data.participantId;
                     
-                    // 심사위원별 진행 현황 계산
                     if (judgeInfo[jId]) {
                         judgeInfo[jId].count++;
                         if (parseInt(pId) > judgeInfo[jId].latestPId) {
@@ -111,17 +116,20 @@
                         }
                     }
 
-                    // 순위 합산 계산 (결시자 데이터는 제외)
                     if (!data.isAbsent) {
-                        const totalScore = data.techScore + data.expScore + data.artScore;
                         if (!participantData[pId]) {
                             participantData[pId] = [];
                         }
-                        participantData[pId].push(totalScore);
+                        // 동점자 처리를 위해 세부 점수 객체로 저장
+                        participantData[pId].push({
+                            total: data.techScore + data.expScore + data.artScore,
+                            tech: data.techScore,
+                            exp: data.expScore,
+                            art: data.artScore
+                        });
                     }
                 });
 
-                // 3. 심사위원 현황 테이블 화면에 출력
                 statusBody.innerHTML = '';
                 let statusHtml = '';
                 for (const jId in judgeInfo) {
@@ -140,20 +148,26 @@
                 }
                 statusBody.innerHTML = statusHtml;
 
-                // 4. 순위 테이블 화면에 출력
                 let ranking = [];
                 for (const pId in participantData) {
                     let scores = participantData[pId];
                     const judgeCount = scores.length;
-                    let finalScore = 0;
-
+                    
                     if (judgeCount >= 3) {
-                        scores.sort((a, b) => a - b);
+                        scores.sort((a, b) => a.total - b.total);
                         scores.shift(); 
                         scores.pop();   
                     }
 
-                    finalScore = scores.reduce((sum, val) => sum + val, 0);
+                    let finalScore = 0;
+                    let finalTech = 0;
+                    let finalExp = 0;
+
+                    scores.forEach(s => {
+                        finalScore += s.total;
+                        finalTech += s.tech;
+                        finalExp += s.exp;
+                    });
 
                     let pName = "이름 없음";
                     let pInfo = "분류 없음";
@@ -173,12 +187,19 @@
                             pName: pName,
                             pInfo: pInfo,
                             judgeCount: judgeCount,
-                            finalScore: finalScore
+                            finalScore: finalScore,
+                            finalTech: finalTech,
+                            finalExp: finalExp
                         });
                     }
                 }
 
-                ranking.sort((a, b) => b.finalScore - a.finalScore);
+                // 2. 동점자 정렬 처리: 총점 -> 기술성 -> 표현력 순
+                ranking.sort((a, b) => {
+                    if (b.finalScore !== a.finalScore) return b.finalScore - a.finalScore;
+                    if (b.finalTech !== a.finalTech) return b.finalTech - a.finalTech;
+                    return b.finalExp - a.finalExp;
+                });
 
                 resultBody.innerHTML = '';
                 if (ranking.length === 0) {
@@ -215,7 +236,6 @@
                 }
                 csv.push(row.join(","));
             }
-            // 엑셀에서 한글이 깨지지 않도록 BOM 추가
             const csvFile = new Blob(["\uFEFF" + csv.join("\n")], {type: "text/csv;charset=utf-8;"});
             const downloadLink = document.createElement("a");
             downloadLink.download = "순위결과.csv";
