@@ -10,6 +10,7 @@
         th { background-color: #f4f4f4; }
         .btn-group { margin-bottom: 15px; }
         button { padding: 10px 15px; color: white; border: none; cursor: pointer; font-size: 14px; margin-right: 5px; }
+        input[type="text"] { padding: 8px; font-size: 14px; margin-right: 5px; width: 200px; }
         #refresh-btn { background-color: #28a745; }
         #refresh-btn:hover { background-color: #218838; }
         #excel-btn { background-color: #17a2b8; }
@@ -20,7 +21,8 @@
 
     <h2>참가자 순위 및 점수 현황</h2>
     <div class="btn-group">
-        <button id="refresh-btn">데이터 새로고침</button>
+        <input type="text" id="filter-input" placeholder="부문 검색 (예: 성인1)">
+        <button id="refresh-btn">검색 및 새로고침</button>
         <button id="excel-btn">엑셀(CSV) 다운로드</button>
     </div>
 
@@ -30,13 +32,14 @@
                 <th>순위</th>
                 <th>참가자 번호</th>
                 <th>참가자 이름</th>
+                <th>분류(부문)</th>
                 <th>심사위원 수</th>
                 <th>최종 합산 점수</th>
             </tr>
         </thead>
         <tbody id="result-body">
             <tr>
-                <td colspan="5">데이터를 불러오는 중입니다...</td>
+                <td colspan="6">데이터를 불러오는 중입니다...</td>
             </tr>
         </tbody>
     </table>
@@ -59,7 +62,8 @@
 
         async function loadScores() {
             const tbody = document.getElementById('result-body');
-            tbody.innerHTML = '<tr><td colspan="5">데이터를 불러오는 중입니다...</td></tr>';
+            const filterKeyword = document.getElementById('filter-input').value.trim();
+            tbody.innerHTML = '<tr><td colspan="6">데이터를 불러오는 중입니다...</td></tr>';
 
             try {
                 const querySnapshot = await getDocs(collection(db, "scores"));
@@ -76,7 +80,7 @@
                     participantData[pId].push(totalScore);
                 });
 
-                const ranking = [];
+                let ranking = [];
 
                 for (const pId in participantData) {
                     let scores = participantData[pId];
@@ -92,21 +96,26 @@
                     finalScore = scores.reduce((sum, val) => sum + val, 0);
 
                     let pName = "이름 없음";
+                    let pInfo = "분류 없음";
                     try {
                         const pDoc = await getDoc(doc(db, "participants", pId));
                         if (pDoc.exists()) {
                             pName = pDoc.data().name || "이름 없음";
+                            pInfo = pDoc.data().info || "분류 없음";
                         }
                     } catch(e) {
                         console.error("이름 로드 실패", e);
                     }
 
-                    ranking.push({
-                        pId: pId,
-                        pName: pName,
-                        judgeCount: judgeCount,
-                        finalScore: finalScore
-                    });
+                    if (filterKeyword === "" || pInfo.includes(filterKeyword)) {
+                        ranking.push({
+                            pId: pId,
+                            pName: pName,
+                            pInfo: pInfo,
+                            judgeCount: judgeCount,
+                            finalScore: finalScore
+                        });
+                    }
                 }
 
                 ranking.sort((a, b) => b.finalScore - a.finalScore);
@@ -114,7 +123,7 @@
                 tbody.innerHTML = '';
                 
                 if (ranking.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5">제출된 평가 데이터가 없습니다.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6">조건에 맞는 데이터가 없습니다.</td></tr>';
                     return;
                 }
 
@@ -124,6 +133,7 @@
                         <td>${index + 1}</td>
                         <td>${data.pId}번</td>
                         <td>${data.pName}</td>
+                        <td>${data.pInfo}</td>
                         <td>${data.judgeCount}명</td>
                         <td>${data.finalScore}점</td>
                     `;
@@ -132,7 +142,7 @@
 
             } catch (error) {
                 console.error("데이터 불러오기 오류:", error);
-                tbody.innerHTML = '<tr><td colspan="5">데이터를 불러오는 데 실패했습니다.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6">데이터를 불러오는 데 실패했습니다.</td></tr>';
             }
         }
 
