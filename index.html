@@ -18,6 +18,18 @@
         .btn-danger { background-color: #dc3545; }
         .btn-danger:hover { background-color: #c82333; }
         #evaluation-container { display: none; }
+        
+        /* 참가자 이름 강조 스타일 추가 */
+        #p-name { 
+            font-size: 28px; 
+            font-weight: bold; 
+            color: #0056b3; 
+            background-color: #f4f4f4; 
+            padding: 5px 10px; 
+            border-radius: 5px; 
+            display: inline-block; 
+            margin-top: 5px;
+        }
     </style>
 </head>
 <body>
@@ -39,7 +51,7 @@
         <h2>참가자 평가 (<span id="participant-num">1</span>번)</h2>
         <p>심사위원: <span id="judge-display-name"></span></p>
         <div id="participant-info" class="form-group">
-            <p><strong>이름:</strong> <span id="p-name">불러오는 중...</span></p>
+            <p><strong>이름:</strong> <br><span id="p-name">불러오는 중...</span></p>
             <p><strong>분류:</strong> <span id="p-info">불러오는 중...</span></p>
         </div>
 
@@ -140,7 +152,6 @@
             }
         });
 
-        // 이전 참가자 버튼
         document.getElementById('prev-btn').addEventListener('click', async () => {
             if (currentParticipantNum > 1) {
                 currentParticipantNum--;
@@ -152,7 +163,6 @@
             }
         });
 
-        // 결시 처리 버튼
         document.getElementById('absent-btn').addEventListener('click', async () => {
             if (confirm(`${currentParticipantNum}번 참가자를 결시 처리하시겠습니까?`)) {
                 try {
@@ -173,7 +183,6 @@
             }
         });
 
-        // 점수 제출
         document.getElementById('score-form').addEventListener('submit', async (e) => {
             e.preventDefault();
 
@@ -182,7 +191,6 @@
             const artScore = parseInt(document.getElementById('artScore').value);
 
             try {
-                // setDoc을 사용하여 기존 점수가 있다면 덮어쓰기
                 const scoreDocId = `${currentJudgeId}_${currentParticipantNum}`;
                 await setDoc(doc(db, "scores", scoreDocId), {
                     judgeId: currentJudgeId,
